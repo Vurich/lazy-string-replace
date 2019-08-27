@@ -36,16 +36,16 @@ impl<'a, P, D> ReplacedString<'a, P, D> {
 }
 
 /// A convenience trait to allow you to call `.lazy_replace` on anything that can deref to a `&str`.
-pub trait LazyReplace<'a> {
+pub trait LazyReplace {
     /// Create a struct implementing `Display` that will display this string with the specified pattern replaced with the specified replacement
-    fn lazy_replace<P, D>(self, pat: P, replacement: D) -> ReplacedString<'a, P, D>;
+    fn lazy_replace<P, D>(&self, pat: P, replacement: D) -> ReplacedString<'_, P, D>;
 }
 
-impl<'a, T> LazyReplace<'a> for &'a T
+impl<T> LazyReplace for T
 where
     T: Deref<Target = str>,
 {
-    fn lazy_replace<P, D>(self, needle: P, replacement: D) -> ReplacedString<'a, P, D> {
+    fn lazy_replace<P, D>(&self, needle: P, replacement: D) -> ReplacedString<'_, P, D> {
         ReplacedString {
             needle,
             replacement,
@@ -54,12 +54,12 @@ where
     }
 }
 
-impl<'a> LazyReplace<'a> for &'a str {
-    fn lazy_replace<P, D>(self, needle: P, replacement: D) -> ReplacedString<'a, P, D> {
+impl LazyReplace for str {
+    fn lazy_replace<P, D>(&self, needle: P, replacement: D) -> ReplacedString<'_, P, D> {
         ReplacedString {
             needle,
             replacement,
-            haystack: self,
+            haystack: &*self,
         }
     }
 }
@@ -87,10 +87,6 @@ where
 mod tests {
     use super::LazyReplace;
 
-    fn correctly_handles_lifetimes(s: &str) -> impl std::fmt::Display + '_ {
-        s.lazy_replace("!HERE!", "one")
-    }
-
     #[test]
     fn it_works() {
         assert_eq!(
@@ -104,11 +100,6 @@ mod tests {
         assert_eq!(
             "onetwothreethree",
             format!("{}", "onetwo!HERE!!HERE!".lazy_replace("!HERE!", "three"))
-        );
-        let s = "!HERE!twothree".to_string();
-        assert_eq!(
-            "onetwothree",
-            format!("{}", correctly_handles_lifetimes(&s))
         );
     }
 }
