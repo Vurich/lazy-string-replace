@@ -44,8 +44,11 @@ where
     R: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        ReplaceWriter::new(f, self.needle, &self.replacement)
-            .write_fmt(format_args!("{}", self.haystack))
+        write!(
+            ReplaceWriter::new(f, self.needle, &self.replacement),
+            "{}",
+            self.haystack
+        )
     }
 }
 
@@ -82,31 +85,62 @@ where
     R: fmt::Display,
 {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let start = self.needle_pos;
-        let needle = &self.needle[start..];
-        if s.len() < needle.len() {
-            let needle = &needle[..s.len()];
-            if s.starts_with(needle) {
-                self.needle_pos += s.len();
-                self.buffer.push_str(s);
-                Ok(())
-            } else {
-                self.needle_pos = 0;
-                self.writer.write_str(&self.buffer)?;
-                self.buffer.clear();
-                self.writer.write_str(s)
-            }
+        let rest_needle = &self.needle[self.needle_pos..];
+
+        if s.len() < rest_needle.len() && s.starts_with(&rest_needle[..s.len()]) {
+            self.needle_pos += s.len();
+            self.buffer.push_str(s);
         } else {
-            if s.starts_with(needle) {
+            self.needle_pos = 0;
+
+            if s == rest_needle {
                 self.buffer.clear();
-                self.writer.write_fmt(format_args!("{}", self.replacement))
+                write!(self.writer, "{}", self.replacement)?;
             } else {
-                self.needle_pos = 0;
                 self.writer.write_str(&self.buffer)?;
                 self.buffer.clear();
-                self.writer.write_str(s)
+
+                if let Some(first_char) = self.needle.chars().next() {
+                    let mut s = s;
+
+                    while let Some(i) = s.find(first_char) {
+                        self.writer.write_str(&s[..i])?;
+                        s = &s[i..];
+                        dbg!(s);
+
+                        let mut len = first_char.len_utf8();
+                        let needle_bytes = self.needle.as_bytes();
+                        let s_bytes = s.as_bytes();
+
+                        while needle_bytes
+                            .get(len)
+                            .and_then(|needle| s_bytes.get(len).map(|haystack| haystack == needle))
+                            .unwrap_or(false)
+                        {
+                            len += 1;
+                        }
+
+                        if len == self.needle.len() {
+                            write!(self.writer, "{}", self.replacement)?;
+                            s = &s[len..];
+                        } else if len == s.len() {
+                            self.buffer.push_str(&s[i..]);
+                            self.needle_pos = len;
+
+                            return Ok(());
+                        } else {
+                            self.writer.write_str(&s[..len])?;
+                            s = &s[len..];
+                        }
+                    }
+
+                    dbg!(s);
+                    self.writer.write_str(s)?;
+                }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -218,13 +252,29 @@ mod tests {
     #[test]
     fn replace_display() {
         assert_eq!(
-            "oneonetwothreethree",
+            "foobar",
+            "foo!HERE!".replace_display("!HERE!", "bar").to_string()
+        );
+        assert_eq!(
+            "foobar",
+            "!HERE!bar".replace_display("!HERE!", "foo").to_string()
+        );
+        assert_eq!(
+            "foobarbaz",
+            format!(
+                "{}{}",
+                "foo!HERE!".replace_display("!HERE!", "ba"),
+                "!HERE!baz".replace_display("!HERE!", "r")
+            )
+        );
+        assert_eq!(
+            "fooonetwothreebaz",
             format_args!(
                 "{}{}",
-                "one!HERE!".lazy_replace("!HERE!", "tw"),
-                "!HERE!three".lazy_replace("!HERE!", "o")
+                "foo!HERE!".replace_display("!HERE!", "ba"),
+                "!HERE!baz".replace_display("!HERE!", "r")
             )
-            .replace_display("two", "one!HERE!three".lazy_replace("!HERE!", "two"))
+            .replace_display("bar", "one!HERE!three".replace_display("!HERE!", "two"))
             .to_string()
         );
     }
