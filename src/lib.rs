@@ -106,7 +106,6 @@ where
                     while let Some(i) = s.find(first_char) {
                         self.writer.write_str(&s[..i])?;
                         s = &s[i..];
-                        dbg!(s);
 
                         let mut len = first_char.len_utf8();
                         let needle_bytes = self.needle.as_bytes();
@@ -134,7 +133,6 @@ where
                         }
                     }
 
-                    dbg!(s);
                     self.writer.write_str(s)?;
                 }
             }
